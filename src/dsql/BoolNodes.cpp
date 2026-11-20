@@ -54,6 +54,32 @@ namespace
 	// Beware: raising the limit beyond the 16-bit boundaries would be an incompatible BLR change.
 	static const unsigned MAX_MEMBER_LIST = MAX_USHORT;
 
+	// Get the comparison operator that gives the same result when its arguments are swapped,
+	// e.g. A > B is equivalent to B < A.
+	bool getSwappedComparison(UCHAR blrOp, UCHAR& swappedOp)
+	{
+		switch (blrOp)
+		{
+			case blr_gtr:
+				swappedOp = blr_lss;
+				return true;
+
+			case blr_lss:
+				swappedOp = blr_gtr;
+				return true;
+
+			case blr_geq:
+				swappedOp = blr_leq;
+				return true;
+
+			case blr_leq:
+				swappedOp = blr_geq;
+				return true;
+		}
+
+		return false;
+	}
+
 	// Compare two comparisons with the boolean literal of the form:
 	//   [NOT] <value> [{ = | <> } { TRUE | FALSE }]
 	// and detect whether they're logically the same.
@@ -617,7 +643,20 @@ bool ComparativeBoolNode::sameAs(const ExprNode* other, bool ignoreStreams) cons
 		return true;
 
 	if (blrOp != otherNode->blrOp)
+	{
+		// A > B is equivalent to B < A, A >= B is equivalent to B <= A
+
+		UCHAR swappedOp;
+
+		if (!arg3 && !otherNode->arg3 &&
+			getSwappedComparison(otherNode->blrOp, swappedOp) && blrOp == swappedOp)
+		{
+			return arg1->sameAs(otherNode->arg2, ignoreStreams) &&
+				arg2->sameAs(otherNode->arg1, ignoreStreams);
+		}
+
 		return false;
+	}
 
 	bool matching = arg1->sameAs(otherNode->arg1, ignoreStreams) &&
 		arg2->sameAs(otherNode->arg2, ignoreStreams);
@@ -630,8 +669,6 @@ bool ComparativeBoolNode::sameAs(const ExprNode* other, bool ignoreStreams) cons
 		if (matching)
 			return true;
 	}
-
-	// TODO match A > B to B <= A, etc
 
 	if (blrOp == blr_eql || blrOp == blr_equiv || blrOp == blr_neq)
 	{
